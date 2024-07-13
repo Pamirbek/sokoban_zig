@@ -7,7 +7,62 @@ const MapConversionError = error{
     UndefinedMapObjectNumber,
 };
 
-fn convertFromFileToMap() ![10][10]MapObject {
+const MoveDirection = enum { left, down, up, right };
+
+const GameInfo = struct {
+    map: [10][10]MapObject,
+    player_coordinates: [2]usize,
+
+    fn playerMove(self: *GameInfo, direction: MoveDirection) void {
+        switch (direction) {
+            MoveDirection.left => {
+                if (self.player_coordinates[0] <= 1) {
+                    return;
+                }
+
+                self.map[self.player_coordinates[1]][self.player_coordinates[0] - 1] = MapObject.player;
+                self.map[self.player_coordinates[1]][self.player_coordinates[0]] = MapObject.floor;
+
+                self.player_coordinates[0] -= 1;
+            },
+
+            MoveDirection.down => {
+                if (self.player_coordinates[1] > 7) {
+                    return;
+                }
+
+                self.map[self.player_coordinates[1] + 1][self.player_coordinates[0]] = MapObject.player;
+                self.map[self.player_coordinates[1]][self.player_coordinates[0]] = MapObject.floor;
+
+                self.player_coordinates[1] += 1;
+            },
+
+            MoveDirection.up => {
+                if (self.player_coordinates[1] <= 1) {
+                    return;
+                }
+
+                self.map[self.player_coordinates[1] - 1][self.player_coordinates[0]] = MapObject.player;
+                self.map[self.player_coordinates[1]][self.player_coordinates[0]] = MapObject.floor;
+
+                self.player_coordinates[1] -= 1;
+            },
+
+            MoveDirection.right => {
+                if (self.player_coordinates[0] > 7) {
+                    return;
+                }
+
+                self.map[self.player_coordinates[1]][self.player_coordinates[0] + 1] = MapObject.player;
+                self.map[self.player_coordinates[1]][self.player_coordinates[0]] = MapObject.floor;
+
+                self.player_coordinates[0] += 1;
+            },
+        }
+    }
+};
+
+fn convertFromFileToMap() !GameInfo {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
@@ -20,7 +75,10 @@ fn convertFromFileToMap() ![10][10]MapObject {
     var arr = std.ArrayList(u8).init(allocator);
     defer arr.deinit();
 
+    var player_y: usize = undefined;
+    var player_x: usize = undefined;
     var map: [10][10]MapObject = undefined;
+
     var i: u8 = 0;
     while (true) : (i += 1) {
         reader.streamUntilDelimiter(arr.writer(), '\n', null) catch |err| switch (err) {
@@ -30,6 +88,8 @@ fn convertFromFileToMap() ![10][10]MapObject {
 
         for (arr.items, 0..) |object_number, j| {
             if (object_number == '0') {
+                player_x = j;
+                player_y = i;
                 map[i][j] = MapObject.player;
             } else if (object_number == '1') {
                 map[i][j] = MapObject.wall;
@@ -46,7 +106,10 @@ fn convertFromFileToMap() ![10][10]MapObject {
         arr.clearRetainingCapacity();
     }
 
-    return map;
+    return GameInfo{
+        .map = map,
+        .player_coordinates = .{ player_x, player_y },
+    };
 }
 
 fn drawMap(map: [10][10]MapObject) void {
@@ -84,7 +147,7 @@ fn drawMap(map: [10][10]MapObject) void {
 }
 
 pub fn main() anyerror!void {
-    const map: [10][10]MapObject = try convertFromFileToMap();
+    var game_info: GameInfo = try convertFromFileToMap();
 
     const screenWidth = 800;
     const screenHeight = 600;
@@ -100,6 +163,22 @@ pub fn main() anyerror!void {
 
         rl.clearBackground(rl.Color.white);
 
-        drawMap(map);
+        drawMap(game_info.map);
+
+        if (rl.isKeyPressed(rl.KeyboardKey.key_left)) {
+            game_info.playerMove(MoveDirection.left);
+        }
+
+        if (rl.isKeyPressed(rl.KeyboardKey.key_down)) {
+            game_info.playerMove(MoveDirection.down);
+        }
+
+        if (rl.isKeyPressed(rl.KeyboardKey.key_up)) {
+            game_info.playerMove(MoveDirection.up);
+        }
+
+        if (rl.isKeyPressed(rl.KeyboardKey.key_right)) {
+            game_info.playerMove(MoveDirection.right);
+        }
     }
 }
