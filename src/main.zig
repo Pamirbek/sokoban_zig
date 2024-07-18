@@ -10,10 +10,11 @@ const MapConversionError = error{
 const MoveDirection = enum { left, down, up, right };
 
 const GameInfo = struct {
-    // TODO: Make map size dynamic
+    // TODO: Make map size dynamic and include several boxes and targets
     map: [10][10]MapObject,
     player_coordinates: [2]u8,
     box_coordinates: [2]u8,
+    overlapped_targets: [2]u8,
 
     fn playerMove(self: *GameInfo, direction: MoveDirection) void {
         var positive_number: bool = undefined;
@@ -62,6 +63,9 @@ const GameInfo = struct {
             if (self.map[self.player_coordinates[1] + y_axis_movement][self.player_coordinates[0] + x_axis_movement] == MapObject.box) {
                 if (self.map[self.box_coordinates[1] + y_axis_movement][self.box_coordinates[0] + x_axis_movement] == MapObject.wall) {
                     return;
+                } else if (self.map[self.box_coordinates[1] + y_axis_movement][self.box_coordinates[0] + x_axis_movement] == MapObject.target) {
+                    self.overlapped_targets[0] = self.box_coordinates[0] + x_axis_movement;
+                    self.overlapped_targets[1] = self.box_coordinates[1] + y_axis_movement;
                 }
 
                 self.map[self.box_coordinates[1] + y_axis_movement][self.box_coordinates[0] + x_axis_movement] = MapObject.box;
@@ -69,15 +73,28 @@ const GameInfo = struct {
                 self.box_coordinates[1] = self.box_coordinates[1] + y_axis_movement;
             }
 
+            if (self.map[self.player_coordinates[1] + y_axis_movement][self.player_coordinates[0] + x_axis_movement] == MapObject.target) {
+                self.overlapped_targets[0] = self.player_coordinates[0] + x_axis_movement;
+                self.overlapped_targets[1] = self.player_coordinates[1] + y_axis_movement;
+            }
+
             self.map[self.player_coordinates[1] + y_axis_movement][self.player_coordinates[0] + x_axis_movement] = MapObject.player;
             self.map[self.player_coordinates[1]][self.player_coordinates[0]] = MapObject.floor;
+
+            // TODO: Replace with better logic for recovering box target
+            if (self.map[self.overlapped_targets[1]][self.overlapped_targets[0]] == MapObject.floor) {
+                self.map[self.overlapped_targets[1]][self.overlapped_targets[0]] = MapObject.target;
+            }
 
             self.player_coordinates[0] = self.player_coordinates[0] + x_axis_movement;
             self.player_coordinates[1] = self.player_coordinates[1] + y_axis_movement;
         } else {
             if (self.map[self.player_coordinates[1] - y_axis_movement][self.player_coordinates[0] - x_axis_movement] == MapObject.box) {
-                if (self.map[self.box_coordinates[1] + y_axis_movement][self.box_coordinates[0] + x_axis_movement] == MapObject.wall) {
+                if (self.map[self.box_coordinates[1] - y_axis_movement][self.box_coordinates[0] - x_axis_movement] == MapObject.wall) {
                     return;
+                } else if (self.map[self.box_coordinates[1] - y_axis_movement][self.box_coordinates[0] - x_axis_movement] == MapObject.target) {
+                    self.overlapped_targets[0] = self.box_coordinates[0] - x_axis_movement;
+                    self.overlapped_targets[1] = self.box_coordinates[1] - y_axis_movement;
                 }
 
                 self.map[self.box_coordinates[1] - y_axis_movement][self.box_coordinates[0] - x_axis_movement] = MapObject.box;
@@ -85,8 +102,18 @@ const GameInfo = struct {
                 self.box_coordinates[1] = self.box_coordinates[1] - y_axis_movement;
             }
 
+            if (self.map[self.player_coordinates[1] - y_axis_movement][self.player_coordinates[0] - x_axis_movement] == MapObject.target) {
+                self.overlapped_targets[0] = self.player_coordinates[0] - x_axis_movement;
+                self.overlapped_targets[1] = self.player_coordinates[1] - y_axis_movement;
+            }
+
             self.map[self.player_coordinates[1] - y_axis_movement][self.player_coordinates[0] - x_axis_movement] = MapObject.player;
             self.map[self.player_coordinates[1]][self.player_coordinates[0]] = MapObject.floor;
+
+            // TODO: Replace with better logic for recovering box target
+            if (self.map[self.overlapped_targets[1]][self.overlapped_targets[0]] == MapObject.floor) {
+                self.map[self.overlapped_targets[1]][self.overlapped_targets[0]] = MapObject.target;
+            }
 
             self.player_coordinates[0] = self.player_coordinates[0] - x_axis_movement;
             self.player_coordinates[1] = self.player_coordinates[1] - y_axis_movement;
@@ -146,6 +173,7 @@ fn convertFromFileToMap() !GameInfo {
         .map = map,
         .player_coordinates = .{ player_x, player_y },
         .box_coordinates = .{ box_x, box_y },
+        .overlapped_targets = .{ 0, 0 },
     };
 }
 
