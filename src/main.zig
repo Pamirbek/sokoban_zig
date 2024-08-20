@@ -9,12 +9,24 @@ const MapConversionError = error{
 
 const MoveDirection = enum { left, down, up, right };
 
+const SingleCellSize: u8 = 50;
+
 const GameInfo = struct {
     // TODO: Make map size dynamic and include several boxes and targets
     map: [10][10]MapObject,
     player_coordinates: [2]u8,
     box_coordinates: [2]u8,
+    target_coordinates: [2]u8,
     overlapped_targets: [2]u8,
+
+    fn level_finished(self: *GameInfo) bool {
+        if (self.box_coordinates[0] == self.target_coordinates[0] and
+            self.box_coordinates[1] == self.target_coordinates[1])
+        {
+            return true;
+        }
+        return false;
+    }
 
     fn playerMove(self: *GameInfo, direction: MoveDirection) void {
         var positive_number: bool = undefined;
@@ -63,27 +75,17 @@ const GameInfo = struct {
             if (self.map[self.player_coordinates[1] + y_axis_movement][self.player_coordinates[0] + x_axis_movement] == MapObject.box) {
                 if (self.map[self.box_coordinates[1] + y_axis_movement][self.box_coordinates[0] + x_axis_movement] == MapObject.wall) {
                     return;
-                } else if (self.map[self.box_coordinates[1] + y_axis_movement][self.box_coordinates[0] + x_axis_movement] == MapObject.target) {
-                    self.overlapped_targets[0] = self.box_coordinates[0] + x_axis_movement;
-                    self.overlapped_targets[1] = self.box_coordinates[1] + y_axis_movement;
                 }
-
                 self.map[self.box_coordinates[1] + y_axis_movement][self.box_coordinates[0] + x_axis_movement] = MapObject.box;
                 self.box_coordinates[0] = self.box_coordinates[0] + x_axis_movement;
                 self.box_coordinates[1] = self.box_coordinates[1] + y_axis_movement;
             }
 
-            if (self.map[self.player_coordinates[1] + y_axis_movement][self.player_coordinates[0] + x_axis_movement] == MapObject.target) {
-                self.overlapped_targets[0] = self.player_coordinates[0] + x_axis_movement;
-                self.overlapped_targets[1] = self.player_coordinates[1] + y_axis_movement;
-            }
-
             self.map[self.player_coordinates[1] + y_axis_movement][self.player_coordinates[0] + x_axis_movement] = MapObject.player;
             self.map[self.player_coordinates[1]][self.player_coordinates[0]] = MapObject.floor;
 
-            // TODO: Replace with better logic for recovering box target
-            if (self.map[self.overlapped_targets[1]][self.overlapped_targets[0]] == MapObject.floor) {
-                self.map[self.overlapped_targets[1]][self.overlapped_targets[0]] = MapObject.target;
+            if (self.map[self.target_coordinates[1]][self.target_coordinates[0]] == MapObject.floor) {
+                self.map[self.target_coordinates[1]][self.target_coordinates[0]] = MapObject.target;
             }
 
             self.player_coordinates[0] = self.player_coordinates[0] + x_axis_movement;
@@ -92,27 +94,18 @@ const GameInfo = struct {
             if (self.map[self.player_coordinates[1] - y_axis_movement][self.player_coordinates[0] - x_axis_movement] == MapObject.box) {
                 if (self.map[self.box_coordinates[1] - y_axis_movement][self.box_coordinates[0] - x_axis_movement] == MapObject.wall) {
                     return;
-                } else if (self.map[self.box_coordinates[1] - y_axis_movement][self.box_coordinates[0] - x_axis_movement] == MapObject.target) {
-                    self.overlapped_targets[0] = self.box_coordinates[0] - x_axis_movement;
-                    self.overlapped_targets[1] = self.box_coordinates[1] - y_axis_movement;
                 }
-
                 self.map[self.box_coordinates[1] - y_axis_movement][self.box_coordinates[0] - x_axis_movement] = MapObject.box;
                 self.box_coordinates[0] = self.box_coordinates[0] - x_axis_movement;
                 self.box_coordinates[1] = self.box_coordinates[1] - y_axis_movement;
-            }
-
-            if (self.map[self.player_coordinates[1] - y_axis_movement][self.player_coordinates[0] - x_axis_movement] == MapObject.target) {
-                self.overlapped_targets[0] = self.player_coordinates[0] - x_axis_movement;
-                self.overlapped_targets[1] = self.player_coordinates[1] - y_axis_movement;
             }
 
             self.map[self.player_coordinates[1] - y_axis_movement][self.player_coordinates[0] - x_axis_movement] = MapObject.player;
             self.map[self.player_coordinates[1]][self.player_coordinates[0]] = MapObject.floor;
 
             // TODO: Replace with better logic for recovering box target
-            if (self.map[self.overlapped_targets[1]][self.overlapped_targets[0]] == MapObject.floor) {
-                self.map[self.overlapped_targets[1]][self.overlapped_targets[0]] = MapObject.target;
+            if (self.map[self.target_coordinates[1]][self.target_coordinates[0]] == MapObject.floor) {
+                self.map[self.target_coordinates[1]][self.target_coordinates[0]] = MapObject.target;
             }
 
             self.player_coordinates[0] = self.player_coordinates[0] - x_axis_movement;
@@ -121,11 +114,16 @@ const GameInfo = struct {
     }
 };
 
-fn convertFromFileToMap() !GameInfo {
+fn changeLevel(map_name: []const u8) GameInfo {
+    const next_level: GameInfo = try convertFromFileToMap(map_name);
+    return next_level;
+}
+
+fn convertFromFileToMap(map_name: []const u8) !GameInfo {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var file = try std.fs.cwd().openFile("maps/map1.txt", .{});
+    var file = try std.fs.cwd().openFile(map_name, .{});
     defer file.close();
 
     var buffered = std.io.bufferedReader(file.reader());
@@ -138,6 +136,8 @@ fn convertFromFileToMap() !GameInfo {
     var player_x: u8 = undefined;
     var box_x: u8 = undefined;
     var box_y: u8 = undefined;
+    var target_x: u8 = undefined;
+    var target_y: u8 = undefined;
     var map: [10][10]MapObject = undefined;
 
     var i: u8 = 0;
@@ -161,6 +161,8 @@ fn convertFromFileToMap() !GameInfo {
                 box_y = @intCast(i);
                 map[i][j] = MapObject.box;
             } else if (object_number == '4') {
+                target_x = @intCast(j);
+                target_y = @intCast(i);
                 map[i][j] = MapObject.target;
             } else {
                 return MapConversionError.UndefinedMapObjectNumber;
@@ -173,46 +175,47 @@ fn convertFromFileToMap() !GameInfo {
         .map = map,
         .player_coordinates = .{ player_x, player_y },
         .box_coordinates = .{ box_x, box_y },
+        .target_coordinates = .{ target_x, target_y },
         .overlapped_targets = .{ 0, 0 },
     };
 }
 
 fn drawMap(map: [10][10]MapObject) void {
-    var x: i16 = 50;
-    var y: i16 = 50;
+    var x: i16 = SingleCellSize;
+    var y: i16 = SingleCellSize;
 
     for (map) |row| {
         for (row) |map_object| {
             switch (map_object) {
                 MapObject.player => {
-                    rl.drawRectangle(x, y, 50, 50, rl.Color.green);
+                    rl.drawRectangle(x, y, SingleCellSize, SingleCellSize, rl.Color.green);
                 },
 
                 MapObject.wall => {
-                    rl.drawRectangle(x, y, 50, 50, rl.Color.red);
+                    rl.drawRectangle(x, y, SingleCellSize, SingleCellSize, rl.Color.red);
                 },
 
                 MapObject.floor => {
-                    rl.drawRectangle(x, y, 50, 50, rl.Color.white);
+                    rl.drawRectangle(x, y, SingleCellSize, SingleCellSize, rl.Color.white);
                 },
 
                 MapObject.box => {
-                    rl.drawRectangle(x, y, 50, 50, rl.Color.brown);
+                    rl.drawRectangle(x, y, SingleCellSize, SingleCellSize, rl.Color.brown);
                 },
 
                 MapObject.target => {
-                    rl.drawRectangle(x, y, 50, 50, rl.Color.blue);
+                    rl.drawRectangle(x, y, SingleCellSize, SingleCellSize, rl.Color.blue);
                 },
             }
-            x += 50;
+            x += SingleCellSize;
         }
-        x = 50;
-        y += 50;
+        x = SingleCellSize;
+        y += SingleCellSize;
     }
 }
 
 pub fn main() anyerror!void {
-    var game_info: GameInfo = try convertFromFileToMap();
+    var game_info: GameInfo = try convertFromFileToMap("maps/map1.txt");
 
     const screenWidth = 800;
     const screenHeight = 600;
@@ -230,14 +233,18 @@ pub fn main() anyerror!void {
 
         drawMap(game_info.map);
 
-        if (rl.isKeyPressed(rl.KeyboardKey.key_left)) {
+        if (rl.isKeyPressed(rl.KeyboardKey.key_left) or rl.isKeyPressed(rl.KeyboardKey.key_h)) {
             game_info.playerMove(MoveDirection.left);
-        } else if (rl.isKeyPressed(rl.KeyboardKey.key_down)) {
+        } else if (rl.isKeyPressed(rl.KeyboardKey.key_down) or rl.isKeyPressed(rl.KeyboardKey.key_j)) {
             game_info.playerMove(MoveDirection.down);
-        } else if (rl.isKeyPressed(rl.KeyboardKey.key_up)) {
+        } else if (rl.isKeyPressed(rl.KeyboardKey.key_up) or rl.isKeyPressed(rl.KeyboardKey.key_k)) {
             game_info.playerMove(MoveDirection.up);
-        } else if (rl.isKeyPressed(rl.KeyboardKey.key_right)) {
+        } else if (rl.isKeyPressed(rl.KeyboardKey.key_right) or rl.isKeyPressed(rl.KeyboardKey.key_l)) {
             game_info.playerMove(MoveDirection.right);
+        }
+
+        if (game_info.level_finished()) {
+            game_info = try convertFromFileToMap("maps/map2.txt");
         }
     }
 }
